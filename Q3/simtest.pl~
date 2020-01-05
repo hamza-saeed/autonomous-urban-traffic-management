@@ -23,7 +23,7 @@ sim_trace(on).
 % WHERE INPUT COMES FROM
 initial('../Users/lee/Desktop/coursesim/initial_state.pl') :- computer(mac).
 % computer(windows).
-initial('C:/Users/Hamza/Desktop/AAIS/scenario2.pl') :- computer(windows).
+initial('C:/Users/Hamza/Desktop/AAIS/scenario1.pl') :- computer(windows).
 % Domain Model File
 domainmodel('../Users/lee/Desktop/coursesim/domain_model.pl') :- computer(mac).
 domainmodel('C:/Users/Hamza/Desktop/AAIS/domain_model.pl') :- computer(windows).
@@ -89,6 +89,15 @@ maximize(X,V):-
 	retract(plan(PLAN)),
 	delete(PLAN,equals(defaultgreentime(X),_),REDUCED_PLAN),
 	assert(plan([equals(defaultgreentime(X),V) | REDUCED_PLAN])).
+
+minimize(X,V):-
+	statics(STATICS),
+	member(equals(mingreentime(X),V), STATICS),
+	retract(plan(PLAN)),
+	delete(PLAN,equals(defaultgreentime(X),_),REDUCED_PLAN),
+	assert(plan([equals(defaultgreentime(X),V) | REDUCED_PLAN])).
+
+
 read_in_state :-
 		initial(I), compile(I).
 
@@ -201,6 +210,25 @@ adjust_plan(BL, PLAN,_,STATICS,  PLAN1) :-
 % if code above fails .. return same plan.
 adjust_default_plan(_, PLAN,_,  PLAN).
 
+adjust_plan2(Junction, PLAN,_,STATICS,  PLAN1) :-
+
+                list_of_stages(Junction,SList),
+                %member(S,SList),
+                nth0(0,SList,Stage0),
+                nth0(0,SList,Stage1),
+% find any stage with Flow Out > 0 - in coursework there is only one with flow out > 0
+              %  total_flow_rate(BL,S, FL),
+              %  FL > 0,
+% rest is taken from the "maximise" solution - Week 10
+                member(equals(maxgreentime(Stage0),MaxTimeS0),  STATICS),
+                member(equals(mingreentime(Stage1),MinTimeS1),STATICS),
+                delete(PLAN,    equals(defaultgreentime(Stage0),_),  REDUCED_PLAN),
+                delete(REDUCED_PLAN,    equals(defaultgreentime(Stage1),_),  REDUCED_PLAN_2),
+                NEW_PLAN = [equals(defaultgreentime(Stage0),MaxTimeS0) | REDUCED_PLAN_2 ],
+                PLAN1 = [equals(defaultgreentime(Stage1),MinTimeS1) | NEW_PLAN ],
+                assert(plan(PLAN1)).
+
+
 %Method to change stage lengths
 change_stage_lengths(Link, NewS1Length, NewS0Length, Delta, PLAN3) :-
 
@@ -309,20 +337,25 @@ do_actions :-
         append(PLAN1,BIT, PLAN2),
 
         %Monitor queues on albert south - change if over 10 PCUs
-
-        queue_monitor(albert_south,albertSouthFlag,DYN,PLAN2,PLAN3),
+   %     minandmax(fox_stage0,fox_stage1,STATICS,PLAN2),
+%        queue_monitor(albert_south,albertSouthFlag,DYN,PLAN2,PLAN3),
+   %     minandmax(centre_stage0,centre_stage1,STATICS,PLAN2),
+	adjust_plan2(fox,PLAN2,DYN2,STATICS,PLAN3),
+	adjust_plan2(vocation,PLAN3,DYN2,STATICS,PLAN4),
+	adjust_plan2(centre,PLAN4,DYN2,STATICS,PLAN5),
 
         %Monitor queues on callans south - change if over 10 PCUs
-        queue_monitor(callans_south,callansSouthFlag,DYN,PLAN3,PLAN4),
+%        queue_monitor(callans_south,callansSouthFlag,DYN,PLAN3,PLAN4),
+   %      minandmax(vocation_stage0,vocation_stage1,STATICS,PLAN2),
 
         %Monitor queues on hepton south - change if over 10 PCUs
-        queue_monitor(hepton_south,heptonSouthFlag,DYN,PLAN4,PLAN5),
+%        queue_monitor(hepton_south,heptonSouthFlag,DYN,PLAN4,PLAN5),
 
         %Monitor queues on trades north - change if over 10 PCUs
-        queue_monitor(trades_north,tradesNorthFlag,DYN,PLAN5,PLAN6),
+%        queue_monitor(trades_north,tradesNorthFlag,DYN,PLAN5,PLAN6),
 
          N1 is N+1,
-         assert(node(N1,T,DYN2,PLAN6,PRESS2)),
+         assert(node(N1,T,DYN2,PLAN5,PRESS2)),
 
          !.
 
@@ -380,6 +413,17 @@ do_plan_waiting([R|Rest],T, [R|Rest2],Trig) :-
         !.
 do_plan_waiting([],_,[],[]) :- !.
 
+minandmax(Stage0,Stage1,STATICS,NEWPLAN) :-
+    retract(plan(PLAN)),
+    member(equals(maxgreentime(Stage0),S0L),  STATICS),
+    member(equals(mingreentime(Stage1),S1L),  STATICS),
+
+    delete(PLAN, equals(defaultgreentime(Stage0),_),  REDUCED_PLAN),
+    delete(REDUCED_PLAN, equals(defaultgreentime(Stage1),_), REDUCED_PLAN_2),
+    TEMPPLAN = ([equals(defaultgreentime(Stage0),S0L) | REDUCED_PLAN_2 ]) ,
+    NEWPLAN = ([equals(defaultgreentime(Stage1),S1L) | TEMPPLAN ]) ,
+    assert(plan(NEWPLAN)),
+    !.
 
 queue_monitor(InLink,FlagName,DYN,PLAN2, PLAN3) :-
 
