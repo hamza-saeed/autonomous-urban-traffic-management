@@ -24,16 +24,16 @@ sim_trace(on).
 initial('../Users/lee/Desktop/coursesim/initial_state.pl') :- computer(mac).
 % initial('C:/Users/Hamza/Desktop/AAIS/initial_state.pl') :-
 % computer(windows).
-initial('C:/Users/Hamza/Desktop/AAIS/scenario1.pl') :- computer(windows).
+initial('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/scenario1.pl') :- computer(windows).
 
 
 % Domain Model File
 domainmodel('../Users/lee/Desktop/coursesim/domain_model.pl') :- computer(mac).
-domainmodel('C:/Users/Hamza/Desktop/AAIS/domainModel.pl') :- computer(windows).
+domainmodel('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/domainModel.pl') :- computer(windows).
 
 % WHERE to put log information
 tracefile('../Users/lee/Desktop/coursesim/trace.txt') :- computer(mac).
-tracefile('C:/Users/Hamza/Desktop/AAIS/trace.txt') :-computer(windows).
+tracefile('./trace.txt') :-computer(windows).
 
 
 %%%%% ************* INITIALISE + go   **************************************
@@ -194,41 +194,46 @@ adjust_default_plan(_, PLAN,_,  PLAN).
 
 
 % Question 1c
-change_stage_lengths(Link, Junction, NewS1Length, NewS0Length) :-
+change_stage_lengths(Link, NewS1Length, NewS0Length) :-
+
+    %Get the Junction Name
+    junction_name_end(Link,Junction),
+    %Get individual stages
     list_of_stages(Junction, StageList),
-    %get element 0 + 1
     nth0(0,StageList,Stage0),
     nth0(1,StageList,Stage1),
-    %get turnrate
+    %get turnrate for stage 1
     total_flow_rate(Link, Stage1, FlowRate),
-    %get cycle length
+    %get cycle length for function
     cyc_length(Junction, CycleLength),
-    %Get demand from outside
-    get_demand(Link,FlowOut),
-    %cycle length * demand from outside
-    Op is CycleLength * FlowOut,
+    %Get flow from outside
+    get_flow_from_outside(Link,FlowOut),
+    %Calculate the new stage length
+    X is CycleLength * FlowOut,
     %answer to above / amount of traffic that flows out
-    NewS1Length is Op / FlowRate,
-    % set stage length to answer of above
-    change_default_greentime(Stage1,NewS1Length),
+    NewS1Length is X / FlowRate,
     %calculate new stage0 length
     stage_len(Stage0,Greentime1),
     stage_len(Stage1,Greentime2),
     CycleGreentime is Greentime1 + Greentime2,
-
+    %Absolute value
     NewS0Length is abs(CycleGreentime - NewS1Length),
-    %adjust stage0 to ensure cycle length remains fixed
+    %Call method to change stage length
+    change_default_greentime(Stage1,NewS1Length),
     change_default_greentime(Stage0,NewS0Length),
     !.
 
-get_demand(Link,FlowFromOut) :-
+get_flow_from_outside(Link,FlowFromOut) :-
     init(_, _, _, _, STATICS, _, _, _),
     member( equals(turnrate(fake,outside,Link),FlowFromOut), STATICS).
 
-change_default_greentime(Stage,NewValue):-
+change_default_greentime(Stage,SNewValue):-
     retract(plan(PLAN)),
+    %Delete old S1 defaultgreentime
     delete(PLAN,equals(defaultgreentime(Stage),_),REDUCED_PLAN),
-    assert(plan([equals(defaultgreentime(Stage),NewValue) | REDUCED_PLAN])).
+    %Assert new value
+    assert(plan([equals(defaultgreentime(Stage),SNewValue) | REDUCED_PLAN]))
+    .
 
 %%%%% END OF SIMULATION - WRITE OUT INFORMATION / RESULTS TO SCREEN AND FILE
 

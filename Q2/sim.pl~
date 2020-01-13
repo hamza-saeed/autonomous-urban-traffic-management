@@ -23,14 +23,14 @@ sim_trace(on).
 % WHERE INPUT COMES FROM
 initial('../Users/lee/Desktop/coursesim/initial_state.pl') :- computer(mac).
 % computer(windows).
-initial('C:/Users/Hamza/Desktop/AAIS/scenario1.pl') :- computer(windows).
+initial('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/scenario4.pl') :- computer(windows).
 % Domain Model File
 domainmodel('../Users/lee/Desktop/coursesim/domain_model.pl') :- computer(mac).
-domainmodel('C:/Users/Hamza/Desktop/AAIS/domain_model.pl') :- computer(windows).
+domainmodel('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/domain_model.pl') :- computer(windows).
 
 % WHERE to put log information
 tracefile('../Users/lee/Desktop/coursesim/trace.txt') :- computer(mac).
-tracefile('C:/Users/Hamza/Desktop/AAIS/trace.txt') :-computer(windows).
+tracefile('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/trace.txt') :-computer(windows).
 
 %%%%% ************* INITIALISE + go   **************************************
 %% Calling predicate .... Time = Simulation time, Inc = Time increment (stick to 1)
@@ -80,7 +80,8 @@ init:-
         nb_setval(albertSouthFlag,AlbertSouthFlag),
         nb_setval(callansSouthFlag,CallansSouthFlag),
         nb_setval(heptonSouthFlag,HeptonSouthFlag),
-        nb_setval(tradesNorthFlag,TradesNorthFlag).
+        nb_setval(tradesNorthFlag,TradesNorthFlag)
+        .
 
 
 maximize(X,V):-
@@ -210,7 +211,6 @@ change_stage_lengths(Link, NewS1Length, NewS0Length, Delta, PLAN3) :-
     list_of_stages(Junction, StageList),
     nth0(0,StageList,Stage0),
     nth0(1,StageList,Stage1),
-
     %Get turnrate for Stage 1
     total_flow_rate(Link, Stage1, FlowRate),
     %Get cycle length for junction
@@ -236,7 +236,8 @@ change_stage_lengths(Link, NewS1Length, NewS0Length, Delta, PLAN3) :-
 
 %Returns flow from outside
 get_flow_from_outside(Link,FlowFromOut) :-
-    init(_, _, _, _, STATICS, _, _, _),
+   % init(_, _, _, _, STATICS, _, _, _),
+    get_statics(STATICS),
     member( equals(turnrate(fake,outside,Link),FlowFromOut), STATICS).
 
 %Changes greentime for stage 0 and stage 1
@@ -271,6 +272,7 @@ click_on(Sim_Time,Delta) :-
         do_actions,
         do_events,
         do_processes(Delta),
+
 %
 % now move on time T to T1 and give node N a new number N1
         retract(node(N,T,DYN,PL,PR)),
@@ -278,6 +280,7 @@ click_on(Sim_Time,Delta) :-
         T1 is T+Delta,
         assert(node(N1,T1,DYN,PL,PR)),
         log_trace(T,N,DYN,PL,PR),
+
 % iterate
         click_on(Sim_Time,Delta),
         !.
@@ -310,16 +313,16 @@ do_actions :-
 
         %Monitor queues on albert south - change if over 10 PCUs
 
-        queue_monitor(albert_south,albertSouthFlag,DYN,PLAN2,PLAN3),
+        queue_monitor(albert_south,albertSouthFlag,DYN2,PLAN2,PLAN3),
 
         %Monitor queues on callans south - change if over 10 PCUs
-        queue_monitor(callans_south,callansSouthFlag,DYN,PLAN3,PLAN4),
+        queue_monitor(callans_south,callansSouthFlag,DYN2,PLAN3,PLAN4),
 
         %Monitor queues on hepton south - change if over 10 PCUs
-        queue_monitor(hepton_south,heptonSouthFlag,DYN,PLAN4,PLAN5),
+        queue_monitor(hepton_south,heptonSouthFlag,DYN2,PLAN4,PLAN5),
 
         %Monitor queues on trades north - change if over 10 PCUs
-        queue_monitor(trades_north,tradesNorthFlag,DYN,PLAN5,PLAN6),
+        queue_monitor(trades_north,tradesNorthFlag,DYN2,PLAN5,PLAN6),
 
          N1 is N+1,
          assert(node(N1,T,DYN2,PLAN6,PRESS2)),
@@ -372,7 +375,14 @@ do_plan_waiting([change_flow(T,Link_in,NewFlow)|Rest],T, Rest2,Trig) :-
         retract( statics(STAT) ),
         delete(STAT,equals(turnrate(fake,outside,Link_in),INrate),NEW_STAT),
         assert( statics( [equals(turnrate(fake,outside,Link_in),NewFlow) | NEW_STAT] ) ),
-        tell(user),nl,write(" CHANGED FLOW RATE ON "),write(Link_in),nl,
+        tell(user),nl,write(" CHANGED FLOW RATE ON "),write(Link_in), nl,
+        %Reset Flags when flow changes!
+        Flag1 = 0, Flag2 = 0, Flag3 = 0, Flag4 = 0,
+        nb_setval(albertSouthFlag,Flag1),
+        nb_setval(callansSouthFlag,Flag2),
+        nb_setval(heptonSouthFlag,Flag3),
+        nb_setval(tradesNorthFlag,Flag4),
+
         do_plan_waiting(Rest,T, Rest2,Trig),
         !.
 do_plan_waiting([R|Rest],T, [R|Rest2],Trig) :-
@@ -387,22 +397,24 @@ queue_monitor(InLink,FlagName,DYN,PLAN2, PLAN3) :-
      nb_getval(FlagName,Flag),
      %Get the occupancy for the inlink
      member( equals( occupancy(InLink), Queue),  DYN),
-
      %If the flag is equal to 0, the stage lengths have not yet been changed
      ( Flag = 0 -> (
-          %If the queue is more than 10, stage lengths need to be changed
+
+          %If the queue is more than 10, stage lengths need to be change
           ( Queue > 10 ->
+              Delta is 3,
               %Call method to calculate and change stage lengths
-              change_stage_lengths(InLink,_,_,0,PLAN3),
-              %Stage lenghs have now been changed, so flag is updated so multiple changes aren't made
+              change_stage_lengths(InLink,_,_,Delta,PLAN3),
+              %Stage lenghs have now been changed, so flag is updated so multiple               changes aren't made
               NewFlag is 1,
               nb_setval(FlagName,NewFlag)
               ;
-              %If the queue is less than 10, the plan can stay as it is
-              PLAN3 = PLAN2 )
+              PLAN3 = PLAN2
+
+              )
       );
         %If the flag isn't 0, the stage lengths have already changed so the plan can stay as it is
-        PLAN3 = PLAN2
+               PLAN3 = PLAN2
      ),
 !.
 
@@ -447,6 +459,8 @@ do_events1 :-
         retract(event_flag(Count)), N1 is Count+1, assert(event_flag(N1)),
         fail.
 do_events1.
+
+timed_var_clear(T):- (T > 90 ,T < 105) -> write('more than 100!'),!.
 
 write_out_if_its_a_trigger(T,Precons) :-
         member(trigger(J),Precons),

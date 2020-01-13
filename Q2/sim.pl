@@ -1,4 +1,4 @@
-﻿
+
 %%%%%%%%%%%%% COURSEWORK 2019 AAIS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%% PDDL+ SIMULATOR - L McCluskey 27/11/19 %%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%% VERSION 1.0.0  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -22,19 +22,15 @@ sim_trace(on).
 
 % WHERE INPUT COMES FROM
 initial('../Users/lee/Desktop/coursesim/initial_state.pl') :- computer(mac).
-% initial('C:/Users/Hamza/Desktop/initial_state.pl') :-
 % computer(windows).
-initial('C:/Users/Hamza/Desktop/scenario2.pl') :- computer(windows).
-
-
+initial('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/scenario5.pl') :- computer(windows).
 % Domain Model File
 domainmodel('../Users/lee/Desktop/coursesim/domain_model.pl') :- computer(mac).
-domainmodel('C:/Users/Hamza/Desktop/domainModel.pl') :- computer(windows).
+domainmodel('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/domain_model.pl') :- computer(windows).
 
 % WHERE to put log information
 tracefile('../Users/lee/Desktop/coursesim/trace.txt') :- computer(mac).
-tracefile('C:/Users/Hamza/Desktop/trace.txt') :-computer(windows).
-
+tracefile('C:/Users/Hamza/Desktop/AAIS Assignment/AAIS/trace.txt') :-computer(windows).
 
 %%%%% ************* INITIALISE + go   **************************************
 %% Calling predicate .... Time = Simulation time, Inc = Time increment (stick to 1)
@@ -72,7 +68,21 @@ init:-
 	init(_, _, _, DYN, STATICS, PLAN, _,_),
 	assert(dyn(DYN)),
 	assert(statics(STATICS)),
-	assert(plan(PLAN)).
+	assert(plan(PLAN)),
+
+        %Flags to show whether inlinks have already been changed
+        AlbertSouthFlag is 0,
+        CallansSouthFlag is 0,
+        HeptonSouthFlag is 0,
+        TradesNorthFlag is 0,
+
+        %Store flags so they are accessible anywhere in the code
+        nb_setval(albertSouthFlag,AlbertSouthFlag),
+        nb_setval(callansSouthFlag,CallansSouthFlag),
+        nb_setval(heptonSouthFlag,HeptonSouthFlag),
+        nb_setval(tradesNorthFlag,TradesNorthFlag)
+        .
+
 
 maximize(X,V):-
 	statics(STATICS),
@@ -171,10 +181,10 @@ average_flow_out(L, AV) :-
 %
 adjust_default_plan :-
                 init(_, _, _, _, STATICS, PLAN, _, _),
-                adjust_plan(station_west, PLAN,STATICS,  PLAN1),
+                adjust_plan(station_west, PLAN,_,STATICS,  PLAN1),
                 nl,write(PLAN1).
 
-adjust_plan(BL, PLAN,STATICS,  PLAN1) :-
+adjust_plan(BL, PLAN,_,STATICS,  PLAN1) :-
                 occ_link(BL, OV),
 % so we can test it in the initial state:
                 OV > -20,
@@ -192,43 +202,54 @@ adjust_plan(BL, PLAN,STATICS,  PLAN1) :-
 % if code above fails .. return same plan.
 adjust_default_plan(_, PLAN,_,  PLAN).
 
+%Method to change stage lengths
+change_stage_lengths(Link, NewS1Length, NewS0Length, Delta, PLAN3) :-
 
-% Question 1c
-change_stage_lengths(Link, Junction, NewS1Length, NewS0Length) :-
+    %Get the Junction Name
+    junction_name_end(Link,Junction),
+    %Get individual stages
     list_of_stages(Junction, StageList),
-    %get element 0 + 1
     nth0(0,StageList,Stage0),
     nth0(1,StageList,Stage1),
-    %get turnrate
+    %Get turnrate for Stage 1
     total_flow_rate(Link, Stage1, FlowRate),
-    %get cycle length
+    %Get cycle length for junction
     cyc_length(Junction, CycleLength),
-    %Get demand from outside
-    get_demand(Link,FlowOut),
-    %cycle length * demand from outside
-    Op is CycleLength * FlowOut,
-    %answer to above / amount of traffic that flows out
-    NewS1Length is Op / FlowRate,
-    % set stage length to answer of above
-    change_default_greentime(Stage1,NewS1Length),
-    %calculate new stage0 length
+    %Get flow from outside
+    get_flow_from_outside(Link,FlowOut),
+    %Calculate the new stage length
+    X is CycleLength * FlowOut,
+    NewS1Length is X / FlowRate,
+    %Now calculate new stage 0 length keeping time fixed
     stage_len(Stage0,Greentime1),
     stage_len(Stage1,Greentime2),
     CycleGreentime is Greentime1 + Greentime2,
-
+    %Absolute value
     NewS0Length is abs(CycleGreentime - NewS1Length),
-    %adjust stage0 to ensure cycle length remains fixed
-    change_default_greentime(Stage0,NewS0Length),
+    %Add/Remove delta
+    NewS1LengthPlusDelta is NewS1Length + Delta,
+    NewS0LengthMinusDelta is NewS0Length - Delta,
+    %Call method to change stage lengths
+    change_default_greentime(Stage1,NewS1LengthPlusDelta,Stage0,NewS0LengthMinusDelta,PLAN3),
+    nl,write('Changed stage lengths for '),write(Link),nl,
     !.
 
-get_demand(Link,FlowFromOut) :-
-    init(_, _, _, _, STATICS, _, _, _),
+%Returns flow from outside
+get_flow_from_outside(Link,FlowFromOut) :-
+   % init(_, _, _, _, STATICS, _, _, _),
+    get_statics(STATICS),
     member( equals(turnrate(fake,outside,Link),FlowFromOut), STATICS).
 
-change_default_greentime(Stage,NewValue):-
+%Changes greentime for stage 0 and stage 1
+change_default_greentime(Stage1,S1NewValue, Stage0, S0NewValue,PLAN3):-
     retract(plan(PLAN)),
-    delete(PLAN,equals(defaultgreentime(Stage),_),REDUCED_PLAN),
-    assert(plan([equals(defaultgreentime(Stage),NewValue) | REDUCED_PLAN])).
+    %Delete previous values
+    delete(PLAN,equals(defaultgreentime(Stage1),_), REDUCED_PLAN),
+    delete(REDUCED_PLAN,equals(defaultgreentime(Stage0),_), REDUCED_PLAN_2),
+    %Add new values
+    NEW_PLAN = ([equals(defaultgreentime(Stage1),S1NewValue) | REDUCED_PLAN_2]),
+    PLAN3 = ([equals(defaultgreentime(Stage0),S0NewValue) | NEW_PLAN]),
+    assert(plan(PLAN3)).
 
 %%%%% END OF SIMULATION - WRITE OUT INFORMATION / RESULTS TO SCREEN AND FILE
 
@@ -244,7 +265,6 @@ click_on(Sim_Time,_) :-
         told,
         !.
 
-
 % MAIN SIMULATION LOOP  ***********
 
 click_on(Sim_Time,Delta) :-
@@ -252,6 +272,7 @@ click_on(Sim_Time,Delta) :-
         do_actions,
         do_events,
         do_processes(Delta),
+
 %
 % now move on time T to T1 and give node N a new number N1
         retract(node(N,T,DYN,PL,PR)),
@@ -259,6 +280,7 @@ click_on(Sim_Time,Delta) :-
         T1 is T+Delta,
         assert(node(N1,T1,DYN,PL,PR)),
         log_trace(T,N,DYN,PL,PR),
+
 % iterate
         click_on(Sim_Time,Delta),
         !.
@@ -271,6 +293,7 @@ click_on(Sim_Time,Delta) :-
 do_actions :-
         retract(node(N,T,DYN,PLAN,PRESS)),
         get_statics(STATICS),
+
 %
 %       if any default time is reached at J, put a 'tigger(J)' in dynamics
 %       to signal that the stage must change (going through intergreen first)
@@ -287,13 +310,24 @@ do_actions :-
 %       waiting to turn on
         do_presses(PRESS,PLAN1,DYN2,T,  BIT,PRESS2),
         append(PLAN1,BIT, PLAN2),
-% call to new code
-	adjust_plan(station_west,PLAN2,DYN2,STATICS,PLAN3),
 
-%
-        N1 is N+1,
-        assert(node(N1,T,DYN2,PLAN3,PRESS2)),
-        !.
+        %Monitor queues on albert south - change if over 10 PCUs
+
+        queue_monitor(albert_south,albertSouthFlag,DYN2,PLAN2,PLAN3),
+
+        %Monitor queues on callans south - change if over 10 PCUs
+        queue_monitor(callans_south,callansSouthFlag,DYN2,PLAN3,PLAN4),
+
+        %Monitor queues on hepton south - change if over 10 PCUs
+        queue_monitor(hepton_south,heptonSouthFlag,DYN2,PLAN4,PLAN5),
+
+        %Monitor queues on trades north - change if over 10 PCUs
+        queue_monitor(trades_north,tradesNorthFlag,DYN2,PLAN5,PLAN6),
+
+         N1 is N+1,
+         assert(node(N1,T,DYN2,PLAN6,PRESS2)),
+
+         !.
 
 %   if any pelican is pushed at this instant, record a 'waiting' change_state
 %     assume presses are supplied in ASCENDING order for efficiency
@@ -341,7 +375,14 @@ do_plan_waiting([change_flow(T,Link_in,NewFlow)|Rest],T, Rest2,Trig) :-
         retract( statics(STAT) ),
         delete(STAT,equals(turnrate(fake,outside,Link_in),INrate),NEW_STAT),
         assert( statics( [equals(turnrate(fake,outside,Link_in),NewFlow) | NEW_STAT] ) ),
-        tell(user),nl,write(" CHANGED FLOW RATE ON "),write(Link_in),nl,
+        tell(user),nl,write(" CHANGED FLOW RATE ON "),write(Link_in), nl,
+        %Reset Flags when flow changes!
+        Flag1 = 0, Flag2 = 0, Flag3 = 0, Flag4 = 0,
+        nb_setval(albertSouthFlag,Flag1),
+        nb_setval(callansSouthFlag,Flag2),
+        nb_setval(heptonSouthFlag,Flag3),
+        nb_setval(tradesNorthFlag,Flag4),
+
         do_plan_waiting(Rest,T, Rest2,Trig),
         !.
 do_plan_waiting([R|Rest],T, [R|Rest2],Trig) :-
@@ -350,9 +391,52 @@ do_plan_waiting([R|Rest],T, [R|Rest2],Trig) :-
 do_plan_waiting([],_,[],[]) :- !.
 
 
+queue_monitor(InLink,FlagName,DYN,PLAN2, PLAN3) :-
+
+     %Get the flag value
+     nb_getval(FlagName,Flag),
+     %Get the occupancy for the inlink
+     member( equals( occupancy(InLink), Queue),  DYN),
+     %If the flag is equal to 0, the stage lengths have not yet been changed
+     ( Flag = 0 -> (
+
+          %If the queue is more than 10, stage lengths need to be change
+          ( Queue > 10 ->
+              Delta is 3,
+              %Call method to calculate and change stage lengths
+              change_stage_lengths(InLink,_,_,Delta,PLAN3),
+              %Stage lenghs have now been changed, so flag is updated so multiple               changes aren't made
+              NewFlag is 1,
+              nb_setval(FlagName,NewFlag)
+              ;
+              PLAN3 = PLAN2
+
+              )
+      );
+        %If the flag isn't 0, the stage lengths have already changed so the plan can stay as it is
+               PLAN3 = PLAN2
+     ),
+!.
+
+
+
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%	simulation of events
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+replace( L , X , Y , Z , R ) :-
+  append(RowPfx,[Row|RowSfx],L),     % decompose the list-of-lists into a prefix, a list and a suffix
+  length(RowPfx,X) ,                 % check the prefix length: do we have the desired list?
+  append(ColPfx,[_|ColSfx],Row) ,    % decompose that row into a prefix, a column and a suffix
+  length(ColPfx,Y) ,                 % check the prefix length: do we have the desired column?
+  append(ColPfx,[Z|ColSfx],RowNew) , % if so, replace the column with its new value
+  append(RowPfx,[RowNew|RowSfx],R)   % and assemble the transformed list-of-lists
+  .
+
 
 do_events :-
         assert(event_flag(0)),
@@ -376,6 +460,8 @@ do_events1 :-
         fail.
 do_events1.
 
+timed_var_clear(T):- (T > 90 ,T < 105) -> write('more than 100!'),!.
+
 write_out_if_its_a_trigger(T,Precons) :-
         member(trigger(J),Precons),
         tell(user),nl,write("Time is: "),write(T), write(" seconds"),nl,
@@ -397,6 +483,13 @@ event_changeN([A|B],DYN,DYN2) :-
         event_changeN(B,DYN1,DYN2),!.
 
 event_changeA([],DYN,DYN) :- !.
+%Welcome to SWI-Prolog (threaded, 64 bits, version 8.0.3)
+%SWI-Prolog comes with ABSOLUTELY NO WARRANTY. This is free software.
+%Please run ?- license. for legal details.
+
+%For online help and background, visit http://www.swi-prolog.0org
+%For built-in help, use ?- help(Topic). or ?- apropos(Word).
+
 event_changeA([assign(FUN,V)|B],DYN,[equals(FUN,V1)|DYN2]) :-
         get_statics(ST),
         append(DYN,ST,ALL),
@@ -510,7 +603,7 @@ value_of(E,_,E) :- integer(E),!.
 value_of(E,ALL,V) :- member(equals(E,V),ALL).
 
 % deal with special case op(_,_,_)
-% could put in value_of_op … X, X is integer or float, = X
+% could put in value_of_op � X, X is integer or float, = X
 value_of_op(Delta, _, op(*,t,X), V) :-
         integer(X),
         V is X*Delta,!.
